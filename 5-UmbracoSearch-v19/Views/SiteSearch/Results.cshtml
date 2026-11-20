@@ -1,0 +1,169 @@
+@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage<SearchDemo.Models.SearchPageViewModel>
+@using Clean.Core.Models.ViewModels
+@using Microsoft.Extensions.Options
+@using SearchDemo.DemoSites
+@using SearchDemo.Search
+@using Umbraco.Cms.Core.Models
+@using Umbraco.Extensions
+@inject IOptions<DemoSiteOptions> DemoSiteOptions
+@{
+    Layout = "~/Views/master.cshtml";
+    var req = Model.Request;
+    var res = Model.Results;
+
+    var showFacets = res.Facets.Count > 0;
+    var selectedFacets = res.Facets.Where(facet => facet.Selected).OrderBy(facet => facet.Name).ToList();
+
+    string Link(int page, IEnumerable<Guid> categories) =>
+        $"{Model.Url()}?q={Uri.EscapeDataString(req.Query ?? string.Empty)}&type={req.TypeFilter}&sort={req.SortOrder}"
+        + string.Concat(categories.Select(key => $"&category={key:N}"))
+        + $"&p={page}";
+
+    string PageLink(int page) => Link(page, req.Categories);
+
+    // Ticking a category adds it to the selection, unticking removes it; both go back to page 1
+    string ToggleLink(SiteSearchFacetValue facet) =>
+        Link(1, facet.Selected ? req.Categories.Where(key => key != facet.Key) : req.Categories.Append(facet.Key));
+}
+
+@await Html.PartialAsync("~/Views/Partials/pageHeader.cshtml",
+    new PageHeaderViewModel(Model.Name, Model.Value<string>("title") ?? Model.Name, Model.Value<string>("subtitle") ?? string.Empty, Model.Value<MediaWithCrops>("mainImage")))
+
+@* Everything inside #search-results is replaced when the search is updated without a page reload *@
+<div class="container" id="search-results">
+    <div class="row @(showFacets ? "" : "justify-content-center")">
+        @if (showFacets)
+        {
+            <aside class="col-lg-3 mb-4" aria-labelledby="category-facets-heading">
+                <div class="d-flex justify-content-between align-items-baseline mb-2">
+                    <h2 id="category-facets-heading" class="h6 text-uppercase text-muted mb-0">Categories</h2>
+                    @if (req.Categories.Count > 0)
+                    {
+                        <a class="small" href="@Link(1, [])">Clear</a>
+                    }
+                </div>
+                <div class="list-group">
+                    @foreach (var facet in res.Facets)
+                    {
+                        <a href="@ToggleLink(facet)"
+                           class="list-group-item list-group-item-action d-flex align-items-center @(facet.Selected ? "active" : "")"
+                           aria-current="@(facet.Selected ? "true" : null)">
+                            <input type="checkbox" class="form-check-input mt-0 me-2 pe-none" tabindex="-1" aria-hidden="true" checked="@facet.Selected" />
+                            <span class="me-auto">@facet.Name</span>
+                            <span class="badge rounded-pill @(facet.Selected ? "bg-light text-dark" : "bg-secondary")">@facet.Count</span>
+                        </a>
+                    }
+                </div>
+            </aside>
+        }
+        <div class="@(showFacets ? "col-lg-9" : "col-lg-8 col-md-10")">
+
+            <div class="alert alert-secondary small">
+                Searching <strong>@Model.SiteName</strong> only, using <strong>@Model.EngineName</strong>
+            </div>
+
+            <form action="@Model.Url()" method="get" class="row g-2 mb-4">
+                <div class="col-12">
+                    <input type="text" class="form-control" name="q" value="@req.Query" placeholder="Search this site" />
+                </div>
+                <div class="col-md-5">
+                    <select name="type" class="form-select">
+                        @foreach (var option in Enum.GetValues<SearchTypeFilter>())
+                        {
+                            <option value="@option" selected="@(option == req.TypeFilter)">@option</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <select name="sort" class="form-select">
+                        @foreach (var option in Enum.GetValues<SearchSortOrder>())
+                        {
+                            <option value="@option" selected="@(option == req.SortOrder)">@option</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button class="btn btn-primary" type="submit">Search</button>
+                </div>
+                @foreach (var key in req.Categories)
+                {
+                    <input type="hidden" name="category" value="@key.ToString("N")" />
+                }
+            </form>
+
+            <div class="d-flex flex-wrap align-items-baseline justify-content-between gap-2 @(selectedFacets.Count > 0 ? "mb-2" : "mb-4")">
+                <h2 id="search-results-heading" class="h5 mb-0" tabindex="-1">
+                    @res.TotalCount @(res.TotalCount == 1 ? "result" : "results")
+                    @if (selectedFacets.Count > 0)
+                    {
+                        <span class="fw-normal">in @string.Join(", ", selectedFacets.Select(facet => facet.Name))</span>
+                    }
+                </h2>
+                <span class="small text-muted">Page @res.Page of @Math.Max(res.TotalPages, 1)</span>
+            </div>
+
+            @if (selectedFacets.Count > 0)
+            {
+                <ul class="list-inline d-flex flex-wrap align-items-center gap-2 mb-4" aria-label="Selected categories">
+                    @foreach (var facet in selectedFacets)
+                    {
+                        <li class="list-inline-item m-0">
+                            <a href="@ToggleLink(facet)" class="badge rounded-pill bg-primary text-decoration-none fs-6 fw-normal"
+                               aria-label="Remove @facet.Name">
+                                @facet.Name <span aria-hidden="true">&times;</span>
+                            </a>
+                        </li>
+                    }
+                    <li class="list-inline-item m-0">
+                        <a href="@Link(1, [])" class="small">Clear all</a>
+                    </li>
+                </ul>
+            }
+
+            @foreach (var item in res.Items)
+            {
+                <div class="post-preview">
+                    <a href="@item.Url">
+                        <h2 class="post-title">
+                            @item.Title
+                            <span class="badge @(item.IsBlogPost ? "bg-primary" : "bg-secondary") align-middle fs-6">
+                                @(item.IsBlogPost ? "Blog post" : "Page")
+                            </span>
+                        </h2>
+                        @if (!string.IsNullOrWhiteSpace(item.Subtitle))
+                        {
+                            <h3 class="post-subtitle">@item.Subtitle</h3>
+                        }
+                    </a>
+                    <p class="post-meta">Updated @item.UpdateDate.ToString("d MMMM yyyy")</p>
+                </div>
+                <hr class="my-4" />
+            }
+
+            @if (res.TotalPages > 1)
+            {
+                <nav aria-label="Search results pages">
+                    <ul class="pagination justify-content-center">
+                        <li class="page-item @(res.Page <= 1 ? "disabled" : "")">
+                            <a class="page-link" href="@PageLink(res.Page - 1)">Previous</a>
+                        </li>
+                        @for (var i = 1; i <= res.TotalPages; i++)
+                        {
+                            <li class="page-item @(i == res.Page ? "active" : "")">
+                                <a class="page-link" href="@PageLink(i)">@i</a>
+                            </li>
+                        }
+                        <li class="page-item @(res.Page >= res.TotalPages ? "disabled" : "")">
+                            <a class="page-link" href="@PageLink(res.Page + 1)">Next</a>
+                        </li>
+                    </ul>
+                </nav>
+            }
+        </div>
+    </div>
+</div>
+
+@if (DemoSiteOptions.Value.AjaxSearch)
+{
+    <script src="/js/site-search.js" asp-append-version="true" defer></script>
+}
