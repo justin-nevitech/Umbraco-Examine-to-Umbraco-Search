@@ -26,19 +26,19 @@ The slides for the accompanying talk are in `Examine-to-Umbraco-Search.pptx`.
 
 | Package | Version | Notes |
 |---|---|---|
-| Umbraco.Cms | 17.7.1 | Latest Umbraco 17 LTS (17.8.0 is an RC) |
+| Umbraco.Cms | 17.7.1 | Umbraco 17 LTS (17.8.2 has since been released; the demo hasn't moved to it) |
 | Clean | 7.0.8 | Latest Clean for Umbraco 17 (8.x targets Umbraco 18) |
 | uSync | 17.4.3 | |
 | Umbraco.Cms.Search.Core, .BackOffice, .Provider.Examine | 17.2.0 | Projects 2–4. The Examine provider is now stable |
 | Examine | 4.0.0 | Projects 2–4, brought in by the Examine provider (project 1 stays on Umbraco's Examine 3.10.0) |
 
 Project 5 uses Umbraco.Cms 19.0.0-rc1 (on .NET 11; it brings in Umbraco Search and Examine 4.0.1), Clean 8.0.2
-(the Umbraco 18 line; Clean 19.0.0-beta01 is built against 19.0.0-beta1) and uSync 19.0.0-beta01 (the only uSync 19
-build so far).
+(the Umbraco 18 line; Clean 19.0.0-rc03, built against 19.0.0-rc1, has since been released) and uSync 19.0.0-beta01
+(uSync 19.0.0-rc1 has since been released).
 
-`dotnet build` reports NuGet vulnerability warnings for packages that come in through Umbraco: SixLabors.ImageSharp
-3.1.12 and System.Security.Cryptography.Pkcs 10.0.0 (all four), and MessagePack 3.1.8 (projects 2–4, through
-Umbraco Search). No overrides are applied.
+`dotnet build` reports NuGet vulnerability warnings in projects 1–4 for packages that come in through Umbraco:
+SixLabors.ImageSharp 3.1.12, System.Security.Cryptography.Pkcs 10.0.0 and MessagePack 3.1.8. Project 5 has none.
+No overrides are applied.
 
 ## Running
 
@@ -56,12 +56,12 @@ dotnet run --project 5-UmbracoSearch-v19
 | | 1-Examine | 2-UmbracoSearch | 3-UmbracoSearch-CustomIndex | 4-UmbracoSearch-ExamineIndexer | 5-UmbracoSearch-v19 |
 |---|---|---|---|---|---|
 | Backoffice | https://localhost:44310/umbraco | https://localhost:44320/umbraco | https://localhost:44330/umbraco | https://localhost:44340/umbraco | https://localhost:44350/umbraco |
-| Site 1 | http://site1.localhost:5110 | http://site1.localhost:5120 | http://site1.localhost:5130 | http://site1.localhost:5140 | http://site1.localhost:5150 |
-| Site 2 | http://site2.localhost:5110 | http://site2.localhost:5120 | http://site2.localhost:5130 | http://site2.localhost:5140 | http://site2.localhost:5150 |
+| Site 1 | https://localhost:44310 | https://localhost:44320 | https://localhost:44330 | https://localhost:44340 | https://localhost:44350 |
 
 Login: `admin@example.com` / `1234567890`
 
-Browsers resolve every `*.localhost` name to 127.0.0.1, so no hosts file changes are needed.
+The second site is given `https://localhost:50000`, a placeholder that nothing listens on. It isn't meant to be
+browsed: it's there so the index holds a second copy of every page, which site 1's search filters out.
 
 ### What happens on first run
 
@@ -72,15 +72,14 @@ Browsers resolve every `*.localhost` name to 127.0.0.1, so no hosts file changes
    Copying doesn't update pickers, so the seeder also repoints each copied blog post's categories at
    site 2's category with the same name.
 4. In projects 2–4, Umbraco Search indexes the second site in the background, about a minute after it is
-   created: its indexing queue first works through the index rebuilds queued at startup. Until then site 2's
-   search is empty.
+   created: its indexing queue first works through the index rebuilds queued at startup.
 
 On the first boot after an install, Clean's site name and "Menu" label can be blank. They appear after a restart.
 
 ### Things to try
 
-- Visit `/search` on each site and search for "umbraco". Results only ever come from the site you're on:
-  the titles match on both sites, but each result links to a page on the current hostname.
+- Visit `/search` and search for "umbraco". Every page exists twice in the index with the same title, once per
+  site, but results only come from site 1.
 - Filter by Blog posts or Pages. Each result shows a Blog post or Page badge.
 - Sort by Latest or Oldest, and page through results (5 per page).
 - Tick one or more categories in the Categories panel. A blog post matches if it has any ticked category. The
@@ -264,9 +263,7 @@ Not tested on 19: counts updating after a publish (that needs a back office sess
 - **Clean's own search.** `DisableDefaultExamineIndexes()` breaks `IPublishedContentQuery.Search()`, which Clean's
   `search.cshtml` and headless search API use. The demo's `SearchController` route-hijacks the search page, so
   Clean's view isn't used.
-- **Shared navigation cache.** Clean caches its navigation partial for 60 minutes regardless of page, so site 2 may
-  briefly show site 1's navigation. This is a Clean quirk, not a search issue.
 - **Project 5 runs a release candidate.** 19.0.0-rc1 and uSync 19.0.0-beta01 can change before release, it was built
   with the .NET 11 RC 3 SDK, and Clean 8 targets Umbraco 18.
-- **uSync** is installed so you can export and import the demo setup, but no uSync files ship with it. Clean's own
-  package migration creates the content.
+- **uSync** is installed so you can export and import the demo setup. Each project's `uSync/` folder holds the content
+  and domains exported on save, but nothing is imported on boot: Clean's own package migration creates the content.
